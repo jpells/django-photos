@@ -51,7 +51,7 @@ class Photo(models.Model):
     flickr_server = models.IntegerField()
     flickr_secret = models.CharField(max_length=50)
     pub_date = models.DateTimeField(auto_now_add=True, verbose_name=_("Date Published"))
-    flickr_user = models.ForeignKey(FlickrUser, verbose_name=_("Flickr User"), null=True, blank=True)
+    flickr_user = models.ForeignKey(FlickrUser, verbose_name=_("Flickr User"))
     state = models.CharField(max_length=1, choices=settings.STATE_CHOICES, default=settings.STATE_DEFAULT, verbose_name=_("State of object"))
     ip_address = models.IPAddressField(verbose_name=_("Author's IP Address"), null=True, blank=True)
     tags = TagField(help_text=_("Enter key terms seperated with a space that you want to associate with this Entry"), verbose_name=_("Tags"))
