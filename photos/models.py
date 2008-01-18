@@ -3,31 +3,44 @@ from django.core.exceptions import ObjectDoesNotExist
 from photos.FlickrClient import FlickrClient
 from django.utils.translation import ugettext as _
 from django.conf import settings
+from django.contrib.auth.models import User
+from tagging.fields import TagField
+from published_manager.managers import PublishedManager
+from django.template.defaultfilters import slugify
 
-class PhotoManager(models.Manager):
-    def sync_flickr_photos(*args, **kwargs):
-        cur_page = 1            # Start on the first page of the stream
-        paginate_by = 20        # Get 20 photos at a time
-        dupe = False            # Set our dupe flag for the following loop
-        client = FlickrClient(settings.FLICKR_API_KEY)          # Get our flickr client running
+class FlickrUser(models.Model):
+    user = models.ForeignKey(User, verbose_name=_("User"), null=True, blank=True)
+    flickr_id = models.CharField(max_length=12, verbose_name=_("Flickr Id"))
+
+    class Admin:
+        pass
+
+    def __unicode__(self):
+        return _("%s %s" % (self.user.__unicode__(), self.flickr_id))
+
+    def sync_photos(self):
+        cur_page = 1
+        paginate_by = 20
+        dupe = False
+        client = FlickrClient(settings.FLICKR_API_KEY)
         while (not dupe):
-            photos = client.flickr_people_getPublicPhotos(user_id=settings.FLICKR_USER_ID, page=cur_page, per_page=paginate_by)
+            photos = client.flickr_people_getPublicPhotos(user_id=self.flickr_id, page=cur_page, per_page=paginate_by)
             for photo in photos:
                 try:
                     row = Photo.objects.get(flickr_id=photo("id"), flickr_secret=str(photo("secret")))
-                    # Raise exception if photo doesn't exist in our DB yet
-                    # If the row exists already, set the dupe flag
                     dupe = True
                 except ObjectDoesNotExist:
                     p = Photo(
                         title = str(photo("title")),
                         flickr_id = int(photo("id")),
-                        flickr_owner = str(photo("owner")),
                         flickr_server = int(photo("server")),
                         flickr_secret = str(photo("secret")),
+                        slug = slugify(str(photo("title"))),
+                        state = settings.STATE_DEFAULT,
+                        flickr_user = self,
                     )
                     p.save()
-                    if (dupe or photos("page") == photos("pages")):   # If we hit a dupe or if we did the last page...
+                    if (dupe or photos("page") == photos("pages")):
                         break
                 else:
                     cur_page += 1
@@ -35,12 +48,17 @@ class PhotoManager(models.Manager):
 class Photo(models.Model):
     title = models.CharField(blank=True, max_length=100)
     flickr_id = models.IntegerField()
-    flickr_owner = models.CharField(max_length=20)
     flickr_server = models.IntegerField()
     flickr_secret = models.CharField(max_length=50)
     pub_date = models.DateTimeField(auto_now_add=True, verbose_name=_("Date Published"))
-    objects = PhotoManager()
-   
+    flickr_user = models.ForeignKey(FlickrUser, verbose_name=_("Flickr User"), null=True, blank=True)
+    state = models.CharField(max_length=1, choices=settings.STATE_CHOICES, default=settings.STATE_DEFAULT, verbose_name=_("State of object"))
+    ip_address = models.IPAddressField(verbose_name=_("Author's IP Address"), null=True, blank=True)
+    tags = TagField(help_text=_("Enter key terms seperated with a space that you want to associate with this Entry"), verbose_name=_("Tags"))
+    slug = models.SlugField(prepopulate_from=('title',), unique=True, verbose_name=_("Slug Field"))
+    published_objects = PublishedManager()
+    objects = models.Manager()
+
     class Admin:
         list_display = ('title',)
 
@@ -48,7 +66,7 @@ class Photo(models.Model):
         return _(self.title)
         
     def get_absolute_url(self):
-        return "http://flickr.com/photos/%s/%s/" % (settings.FLICKR_USER_ID, self.flickr_id)
+        return "http://flickr.com/photos/%s/%s/" % (self.flickr_user.flickr_id, self.flickr_id)
 
     def get_pic_url(self, size='thumb'):
 	    # small_square=75x75
