@@ -2,7 +2,7 @@ from django.db import models
 from django.core.exceptions import ObjectDoesNotExist
 from photos.FlickrClient import FlickrClient
 from django.utils.translation import ugettext as _
-from django.conf import settings
+from photos import settings
 from django.contrib.auth.models import User
 from tagging.fields import TagField
 from published_manager.managers import PublishedManager
